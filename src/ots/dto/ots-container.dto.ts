@@ -5,4 +5,5 @@ export class OtsContainerDto {
     IsVerified: boolean;
     UnixTimeOfVerfication: number;
     OtsFileUpdated: boolean;
+    ExceptionMsg: string;
 }

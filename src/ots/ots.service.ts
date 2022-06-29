@@ -50,43 +50,53 @@ export class OtsService {
         for (const cont of updateOtsDto.OtsContainers) {
             var updatedContainer = new OtsContainerDto();
             updatedContainer.Hash = cont.Hash;
-            const myBuffer = Buffer.from(cont.OtsFileBase64, 'base64');
-            const detached = OpenTimestamps.DetachedTimestampFile.deserialize(myBuffer);
 
-            let options: any = {};
-            // options.ignoreBitcoinNode - Ignore verification with bitcoin node
-            options.ignoreBitcoinNode = false;
-            // options.timeout - Adjust the request timeout (default: 1000)
-            options.timeout = 2000;
+            try {
 
-            const buffer = Buffer.from(cont.Hash, 'hex');
-            const detachedHash = OpenTimestamps.DetachedTimestampFile.fromHash(new OpenTimestamps.Ops.OpSHA256(), buffer);
+                const myBuffer = Buffer.from(cont.OtsFileBase64, 'base64');
+                const detached = OpenTimestamps.DetachedTimestampFile.deserialize(myBuffer);
 
-            let verifyResult = await OpenTimestamps.verify(detached,detachedHash,options);
 
-            if(verifyResult && verifyResult.bitcoin) {
-                updatedContainer.IsVerified = true;
-                updatedContainer.UnixTimeOfVerfication = verifyResult.bitcoin.timestamp;
-            } else {
-                updatedContainer.IsVerified = false;
-                updatedContainer.UnixTimeOfVerfication = undefined;
+                let changed = await OpenTimestamps.upgrade(detached);
+
+                if (changed) {
+                    // OTS file has changed
+                    const timeStampFile = detached.serializeToBytes();
+                    const buffer = Buffer.from(timeStampFile);
+                    updatedContainer.OtsFileBase64 = buffer.toString('base64');
+                    updatedContainer.OtsFileUpdated = true;
+                } else {
+                    // OTS file has not changed
+                    updatedContainer.OtsFileBase64 = cont.OtsFileBase64;
+                    updatedContainer.OtsFileUpdated = false;
+                }
+
+
+                let options: any = {};
+                // options.ignoreBitcoinNode - Ignore verification with bitcoin node
+                options.ignoreBitcoinNode = false;
+                // options.timeout - Adjust the request timeout (default: 1000)
+                options.timeout = 2000;
+
+                const buffer = Buffer.from(cont.Hash, 'hex');
+                const detachedHash = OpenTimestamps.DetachedTimestampFile.fromHash(new OpenTimestamps.Ops.OpSHA256(), buffer);
+
+                let verifyResult = await OpenTimestamps.verify(detached, detachedHash, options);
+
+                if (verifyResult && verifyResult.bitcoin) {
+                    updatedContainer.IsVerified = true;
+                    updatedContainer.UnixTimeOfVerfication = verifyResult.bitcoin.timestamp;
+                } else {
+                    updatedContainer.IsVerified = false;
+                    updatedContainer.UnixTimeOfVerfication = undefined;
+                }
+
+
+                updatedContainer.InfoResult = OpenTimestamps.info(detached);
+            } catch (e) {
+                console.log(`Exception while handling '${updatedContainer.Hash}'`, e);
+                updatedContainer.ExceptionMsg = e.message;
             }
-
-            let changed = await OpenTimestamps.upgrade(detached);
-
-            if(changed){
-                // OTS file has changed
-                const timeStampFile = detached.serializeToBytes();
-                const buffer = Buffer.from(timeStampFile);
-                updatedContainer.OtsFileBase64 = buffer.toString('base64');
-                updatedContainer.OtsFileUpdated = true;
-            } else {
-                // OTS file has not changed
-                updatedContainer.OtsFileBase64 = cont.OtsFileBase64;
-                updatedContainer.OtsFileUpdated = false;
-            }
-
-            updatedContainer.InfoResult = OpenTimestamps.info(detached);
 
             updateOtsResultDto.OtsContainers.push(updatedContainer);
         }
